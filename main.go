@@ -1,130 +1,139 @@
 package main
 
 import (
-        "bufio"
-        "bytes"
-        "flag"
-        "fmt"
-        "io"
-        "io/ioutil"
-        "os"
-        "os/signal"
-        "strings"
-        "syscall"
+	"bufio"
+	"bytes"
+	"flag"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
-        "github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/discordgo"
 )
 
 var (
-        token string
+	token string
 )
 
 const (
-        filename = "game-choices.txt"
+	filename = "game-choices.txt"
 )
 
 func init() {
-        flag.StringVar(&token, "t", "", "Bot Token")
-        flag.Parse()
+	flag.StringVar(&token, "t", "", "Bot Token")
+	flag.Parse()
 }
 
 func main() {
-        dg, err := discordgo.New("Bot " + token)
-        if err != nil {
-                fmt.Println("error creating Discord session,", err)
-                return
-        }
+	dg, err := discordgo.New("Bot " + token)
+	if err != nil {
+		fmt.Println("error creating Discord session,", err)
+		return
+	}
 
-        dg.AddHandler(messageCreate)
+	dg.AddHandler(messageCreate)
 
-        err = dg.Open()
-        if err != nil {
-                fmt.Println("error opening connection,", err)
-                return
-        }
+	err = dg.Open()
+	if err != nil {
+		fmt.Println("error opening connection,", err)
+		return
+	}
 
-        fmt.Println("Bot is now running.  Press CTRL-C to exit.")
-        sc := make(chan os.Signal, 1)
-        signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-        <-sc
+	fmt.Println("Bot is now running.  Press CTRL-C to exit.")
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	<-sc
 
-        dg.Close()
+	dg.Close()
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-        if m.Author.ID == s.State.User.ID || m.Author.Bot {
-                return
-        }
+	if m.Author.ID == s.State.User.ID || m.Author.Bot {
+		return
+	}
 
-        if strings.HasPrefix(m.Content, "/game-night") {
-                data, err := ioutil.ReadFile(filename)
-                if err != nil {
-                        s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error reading file: %s. But have fun at game night!", err))
-                        return
-                }
+	if strings.HasPrefix(m.Content, "/game-night") {
+		data, err := ioutil.ReadFile(filename)
+		if err != nil {
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error reading file: %s. But have fun at game night!", err))
+			return
+		}
 
-                lines := strings.Split(string(data), "\n")
-                reactions := make([]string, 0, len(lines))
-                msg := ""
-                for _, line := range lines {
-                        fields := strings.SplitN(line, " ", 2)
-                        if len(fields) != 2 {
-                                continue
-                        }
-                        reactions = append(reactions, fields[0])
-                        msg += line + "\n"
-                }
+		lines := strings.Split(string(data), "\n")
+		reactions := make([]string, 0, len(lines))
+		msg := ""
+		for i, line := range lines {
+			fields := strings.SplitN(line, " ", 2)
+			if len(fields) != 2 {
+				continue
+			}
+			reactions = append(reactions, fields[0])
+			msg += line + "\n"
 
-                newMsg, _ := s.ChannelMessageSend(m.ChannelID, msg)
-                for _, reaction := range reactions {
-                        s.MessageReactionAdd(newMsg.ChannelID, newMsg.ID, reaction)
-                }
-        }
+			if i > 0 && i%18 == 0 {
+				newMsg, _ := s.ChannelMessageSend(m.ChannelID, msg)
+				for _, reaction := range reactions {
+					s.MessageReactionAdd(newMsg.ChannelID, newMsg.ID, reaction)
+				}
+				msg = ""
+				reactions = make([]string, 0, len(lines))
+			}
+		}
 
-        if strings.HasPrefix(m.Content, "/game-add") {
-                fields := strings.SplitN(m.Content, " ", 3)[1:]
+		newMsg, _ := s.ChannelMessageSend(m.ChannelID, msg)
+		for _, reaction := range reactions {
+			s.MessageReactionAdd(newMsg.ChannelID, newMsg.ID, reaction)
+		}
+	}
 
-                if len(fields) != 2 {
-                        return
-                }
+	if strings.HasPrefix(m.Content, "/game-add") {
+		fields := strings.SplitN(m.Content, " ", 3)[1:]
 
-                file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0766)
-                if err != nil {
-                        return
-                }
-                defer file.Close()
+		if len(fields) != 2 {
+			return
+		}
 
-                file.WriteString(fields[0] + " " + fields[1] + "\n")
-                file.Sync()
+		file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0766)
+		if err != nil {
+			return
+		}
+		defer file.Close()
 
-                s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
-        }
+		file.WriteString(fields[0] + " " + fields[1] + "\n")
+		file.Sync()
 
-        if strings.HasPrefix(m.Content, "/game-remove") {
-                line := strings.TrimSpace(m.Content[12:])
-                file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0766)
-                if err != nil {
-                        return
-                }
-                defer file.Close()
+		s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
+	}
 
-                r := bufio.NewScanner(file)
-                var w bytes.Buffer
-                for r.Scan() {
-                        l := r.Text()
-                        if strings.Contains(l, line) {
-                                continue
-                        } else {
-                                w.WriteString(l + "\n")
-                        }
-                }
+	if strings.HasPrefix(m.Content, "/game-remove") {
+		line := strings.TrimSpace(m.Content[12:])
+		file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0766)
+		if err != nil {
+			return
+		}
+		defer file.Close()
 
-                file.Seek(0, 0)
-                file.Truncate(0)
+		r := bufio.NewScanner(file)
+		var w bytes.Buffer
+		for r.Scan() {
+			l := r.Text()
+			if strings.Contains(l, line) {
+				continue
+			} else {
+				w.WriteString(l + "\n")
+			}
+		}
 
-                io.Copy(file, &w)
-                file.Sync()
+		file.Seek(0, 0)
+		file.Truncate(0)
 
-                s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
-        }
+		io.Copy(file, &w)
+		file.Sync()
+
+		s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
+	}
 }
