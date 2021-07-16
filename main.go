@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,20 +14,12 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var (
-	token string
-)
-
 const (
-	filename = "game-choices.txt"
+	filename = "./game-choices.txt"
 )
-
-func init() {
-	flag.StringVar(&token, "t", "", "Bot Token")
-	flag.Parse()
-}
 
 func main() {
+	token := os.Getenv("TOKEN")
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		fmt.Println("error creating Discord session,", err)
