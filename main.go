@@ -133,7 +133,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
 	}
 
-	if strings.HasPrefix(m.Content, "/draft-start") {
+	if strings.HasPrefix(m.Content, "/draft-start ") {
 		line := strings.TrimSpace(m.Content[13:])
 		names := strings.Fields(strings.ToLower(line))
 		if len(names) <= 1 {
@@ -160,7 +160,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		draftees, draftUnits, draftIndex, draftChannel = nil, nil, 0, ""
 	}
 
-	if strings.HasPrefix(m.Content, "/draft") {
+	if strings.HasPrefix(m.Content, "/draft ") {
 		if draftChannel == "" {
 			s.ChannelMessageSend(m.ChannelID, "Draft is not started. Use /draft-start <names of draftees> to start a draft")
 			return
