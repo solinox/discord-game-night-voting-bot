@@ -135,7 +135,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	if strings.HasPrefix(m.Content, "/draft-start") {
 		line := strings.TrimSpace(m.Content[13:])
-		names := strings.Fields(line)
+		names := strings.Fields(strings.ToLower(line))
 		if len(names) <= 1 {
 			s.ChannelMessageSend(m.ChannelID, "Not enough participants in the draft. Must be at least 2 people")
 			return
@@ -167,8 +167,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		unit := strings.ToLower(strings.TrimSpace(m.Content[7:]))
 		currentDraftee := draftees[draftIndex]
-		if !strings.HasSuffix(m.Author.Username, currentDraftee) {
-			s.ChannelMessageSend(m.ChannelID, "current draftee is "+currentDraftee+", not "+m.Author.Username)
+		if !strings.HasSuffix(strings.ToLower(m.Author.Username), currentDraftee) {
+			s.ChannelMessageSend(m.ChannelID, "current draftee is "+currentDraftee+", not "+strings.ToLower(m.Author.Username))
 			return
 		}
 		if owner, ok := draftUnits[unit]; ok && owner != currentDraftee {
