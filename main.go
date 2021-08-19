@@ -141,9 +141,10 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 		draftees = names
+		draftUnits = make(map[string]string)
 		draftIndex = 0
 		draftChannel = m.ChannelID
-		handleNextDraft(s)
+		handleNextDraft(s, "")
 	}
 
 	if strings.HasPrefix(m.Content, "/draft-end") {
@@ -179,11 +180,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		draftUnits[unit] = currentDraftee
 		draftIndex++
-		handleNextDraft(s)
+		handleNextDraft(s, currentDraftee+" has selected "+unit+". ")
 	}
 }
 
-func handleNextDraft(s *discordgo.Session) {
+func handleNextDraft(s *discordgo.Session, msgPrefix string) {
 	if draftIndex >= len(draftees) {
 		draftIndex = 0
 		// reverse
@@ -192,6 +193,6 @@ func handleNextDraft(s *discordgo.Session) {
 		}
 	}
 	draftee := draftees[draftIndex]
-	msg := fmt.Sprintf("It is %s's turn to make a selection. Enter /draft <name> to select. To end the draft, enter /draft-end", draftee)
+	msg := fmt.Sprintf("%sIt is %s's turn to make a selection. Enter /draft <name> to select. To end the draft, enter /draft-end", msgPrefix, draftee)
 	s.ChannelMessageSend(draftChannel, msg)
 }
