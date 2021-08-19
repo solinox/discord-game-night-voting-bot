@@ -18,6 +18,11 @@ const (
 	filename = "./game-choices.txt"
 )
 
+var draftees []string
+var draftUnits map[string]string
+var draftIndex int
+var draftChannel string
+
 func main() {
 	token := os.Getenv("TOKEN")
 	dg, err := discordgo.New("Bot " + token)
@@ -127,4 +132,66 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
 	}
+
+	if strings.HasPrefix(m.Content, "/draft-start") {
+		line := strings.TrimSpace(m.Content[13:])
+		names := strings.Fields(line)
+		if len(names) <= 1 {
+			s.ChannelMessageSend(m.ChannelID, "Not enough participants in the draft. Must be at least 2 people")
+			return
+		}
+		draftees = names
+		draftIndex = 0
+		draftChannel = m.ChannelID
+		handleNextDraft(s)
+	}
+
+	if strings.HasPrefix(m.Content, "/draft-end") {
+		unitsByOwner := make(map[string][]string)
+		for unit, owner := range draftUnits {
+			unitsByOwner[owner] = append(unitsByOwner[owner], unit)
+		}
+		msg := "Draft has ended. Selections are as follows:"
+		for owner, units := range unitsByOwner {
+			msg += "\n" + owner + ":"
+			msg += strings.Join(units, ", ")
+		}
+		s.ChannelMessageSend(draftChannel, msg)
+		draftees, draftUnits, draftIndex, draftChannel = nil, nil, 0, ""
+	}
+
+	if strings.HasPrefix(m.Content, "/draft") {
+		if draftChannel == "" {
+			s.ChannelMessageSend(m.ChannelID, "Draft is not started. Use /draft-start <names of draftees> to start a draft")
+			return
+		}
+		unit := strings.ToLower(strings.TrimSpace(m.Content[7:]))
+		currentDraftee := draftees[draftIndex]
+		if !strings.HasSuffix(m.Author.Username, currentDraftee) {
+			s.ChannelMessageSend(m.ChannelID, "current draftee is "+currentDraftee+", not "+m.Author.Username)
+			return
+		}
+		if owner, ok := draftUnits[unit]; ok && owner != currentDraftee {
+			s.ChannelMessageSend(draftChannel, "Try again, that is already owned by "+owner)
+			return
+		} else if ok && owner == currentDraftee {
+			// todo add count
+		}
+		draftUnits[unit] = currentDraftee
+		draftIndex++
+		handleNextDraft(s)
+	}
+}
+
+func handleNextDraft(s *discordgo.Session) {
+	if draftIndex >= len(draftees) {
+		draftIndex = 0
+		// reverse
+		for i, j := 0, len(draftees)-1; i < len(draftees)/2; i, j = i+1, j-1 {
+			draftees[i], draftees[j] = draftees[j], draftees[i]
+		}
+	}
+	draftee := draftees[draftIndex]
+	msg := fmt.Sprintf("It is %s's turn to make a selection. Enter /draft <name> to select. To end the draft, enter /draft-end", draftee)
+	s.ChannelMessageSend(draftChannel, msg)
 }
