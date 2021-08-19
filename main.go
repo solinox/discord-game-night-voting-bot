@@ -167,7 +167,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		unit := strings.ToLower(strings.TrimSpace(m.Content[7:]))
 		currentDraftee := draftees[draftIndex]
-		if !strings.HasSuffix(strings.ToLower(m.Author.Username), currentDraftee) {
+		if !strings.HasSuffix(currentDraftee, strings.ToLower(m.Author.Username)) {
 			s.ChannelMessageSend(m.ChannelID, "current draftee is "+currentDraftee+", not "+strings.ToLower(m.Author.Username))
 			return
 		}
