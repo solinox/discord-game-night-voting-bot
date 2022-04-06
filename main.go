@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -42,9 +46,44 @@ func main() {
 	dg.Close()
 }
 
+var dieRegex = regexp.MustCompile(`(\d*)?d(\d+)`)
+
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID || m.Author.Bot {
 		return
+	}
+
+	if strings.HasPrefix(m.Content, "/roll") {
+		msg := strings.TrimSpace(strings.TrimPrefix(m.Content, "/roll"))
+		matches := dieRegex.FindAllStringSubmatch(msg, -1)
+		die := make([]int, 0, 1)
+		rand.Seed(time.Now().UnixNano())
+		for _, match := range matches {
+			numDice, _ := strconv.Atoi(match[1])
+			if numDice <= 0 {
+				numDice = 1
+			}
+			max, _ := strconv.Atoi(match[2])
+			if max <= 0 {
+				s.ChannelMessageSend(m.ChannelID, "invalid dice. /roll d# or /roll #d#, multiple can be combined e.g. /roll d4 5d5 d8")
+				return
+			}
+			for i := 0; i < numDice; i++ {
+				n := rand.Intn(max) + 1
+				die = append(die, n)
+			}
+
+		}
+		sum := 0
+		reply := ""
+		for _, v := range die {
+			reply += strconv.Itoa(v) + " "
+			sum += v
+		}
+		if len(die) > 1 {
+			reply += "=> " + strconv.Itoa(sum)
+		}
+		s.ChannelMessageSend(m.ChannelID, reply)
 	}
 
 	if strings.HasPrefix(m.Content, "/game-night") {
