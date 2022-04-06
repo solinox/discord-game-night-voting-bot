@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	b64 "encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -21,6 +22,11 @@ import (
 const (
 	filename = "./game-choices.txt"
 )
+
+var draftees []string
+var draftUnits map[string]string
+var draftIndex int
+var draftChannel string
 
 func main() {
 	token := os.Getenv("TOKEN")
@@ -97,12 +103,14 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		reactions := make([]string, 0, len(lines))
 		msg := ""
 		for i, line := range lines {
-			fields := strings.SplitN(line, " ", 2)
+			decoded, _ := b64.StdEncoding.DecodeString(line)
+			fields := strings.SplitN(string(decoded), " ", 2)
 			if len(fields) != 2 {
 				continue
 			}
+			fmt.Println("Adding", fields[0], "reaction")
 			reactions = append(reactions, fields[0])
-			msg += line + "\n"
+			msg += string(decoded) + "\n"
 
 			if i > 0 && i%18 == 0 {
 				newMsg, _ := s.ChannelMessageSend(m.ChannelID, msg)
@@ -132,8 +140,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 		defer file.Close()
-
-		file.WriteString(fields[0] + " " + fields[1] + "\n")
+		encoded := b64.StdEncoding.EncodeToString([]byte(fields[0] + " " + fields[1]))
+		file.WriteString(encoded + "\n")
 		file.Sync()
 
 		s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
@@ -151,7 +159,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		var w bytes.Buffer
 		for r.Scan() {
 			l := r.Text()
-			if strings.Contains(l, line) {
+			decoded, _ := b64.StdEncoding.DecodeString(l)
+			if strings.Contains(string(decoded), line) {
 				continue
 			} else {
 				w.WriteString(l + "\n")
@@ -166,4 +175,67 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		s.MessageReactionAdd(m.ChannelID, m.ID, ":+1:")
 	}
+
+	if strings.HasPrefix(m.Content, "/draft-start ") {
+		line := strings.TrimSpace(m.Content[13:])
+		names := strings.Fields(strings.ToLower(line))
+		if len(names) <= 1 {
+			s.ChannelMessageSend(m.ChannelID, "Not enough participants in the draft. Must be at least 2 people")
+			return
+		}
+		draftees = names
+		draftUnits = make(map[string]string)
+		draftIndex = 0
+		draftChannel = m.ChannelID
+		handleNextDraft(s, "")
+	}
+
+	if strings.HasPrefix(m.Content, "/draft-end") {
+		unitsByOwner := make(map[string][]string)
+		for unit, owner := range draftUnits {
+			unitsByOwner[owner] = append(unitsByOwner[owner], unit)
+		}
+		msg := "Draft has ended. Selections are as follows:"
+		for owner, units := range unitsByOwner {
+			msg += "\n" + owner + ":"
+			msg += strings.Join(units, ", ")
+		}
+		s.ChannelMessageSend(draftChannel, msg)
+		draftees, draftUnits, draftIndex, draftChannel = nil, nil, 0, ""
+	}
+
+	if strings.HasPrefix(m.Content, "/draft ") {
+		if draftChannel == "" {
+			s.ChannelMessageSend(m.ChannelID, "Draft is not started. Use /draft-start <names of draftees> to start a draft")
+			return
+		}
+		unit := strings.ToLower(strings.TrimSpace(m.Content[7:]))
+		currentDraftee := draftees[draftIndex]
+		if !strings.HasSuffix(currentDraftee, strings.ToLower(m.Author.Username)) {
+			s.ChannelMessageSend(m.ChannelID, "current draftee is "+currentDraftee+", not "+strings.ToLower(m.Author.Username))
+			return
+		}
+		if owner, ok := draftUnits[unit]; ok && owner != currentDraftee {
+			s.ChannelMessageSend(draftChannel, "Try again, that is already owned by "+owner)
+			return
+		} else if ok && owner == currentDraftee {
+			// todo add count
+		}
+		draftUnits[unit] = currentDraftee
+		draftIndex++
+		handleNextDraft(s, currentDraftee+" has selected "+unit+". ")
+	}
+}
+
+func handleNextDraft(s *discordgo.Session, msgPrefix string) {
+	if draftIndex >= len(draftees) {
+		draftIndex = 0
+		// reverse
+		for i, j := 0, len(draftees)-1; i < len(draftees)/2; i, j = i+1, j-1 {
+			draftees[i], draftees[j] = draftees[j], draftees[i]
+		}
+	}
+	draftee := draftees[draftIndex]
+	msg := fmt.Sprintf("%sIt is %s's turn to make a selection. Enter /draft <name> to select. To end the draft, enter /draft-end", msgPrefix, draftee)
+	s.ChannelMessageSend(draftChannel, msg)
 }
